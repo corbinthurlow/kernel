@@ -31,6 +31,15 @@ TCBptr oldTask;					//pointer used for keeping track of the old task
 // Semaphore declarations
 //YKSEM* YKFreeSemList;
 YKSEM YKSemArray[MAX_SEM];
+
+
+
+
+
+
+
+
+
 //initializes the global variables needed to run the RTOS
 //and adds IdleTask to queue
 void YKInitialize(void){
@@ -397,3 +406,39 @@ TCBptr getSemBlockTask(YKSEM *semaphore) {
 	return TCBHighestPriority;
 
 }
+
+
+YKQ* YKQCreate(void **start, unsigned int size){
+	YKQ* NewQ;						//the new MsgQ to be created
+	NewQ->length = size;			//the length of the queue
+	NewQ->MsgQ = start;				//this sets the MsgQ to the address of the starting **
+	NewQ->HeadMsgQ = *(start);		//this sets Head MsgQ to the start of the MsgQArray
+	NewQ->TailMsgQ = *(start+1);	//this sets Tail MsgQ to the start of the MsgQArray plus 1
+	return NewQ;					//This will return the NewQ					
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

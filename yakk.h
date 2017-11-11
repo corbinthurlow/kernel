@@ -1,6 +1,7 @@
 
 extern unsigned int YKCtxSwCount;
 extern unsigned int YKIdleCount;
+extern int GlobalFlag;
 
 
 // struct that holds semaphores
@@ -12,6 +13,15 @@ typedef struct semaphore
 } YKSEM;
 
 extern YKSEM *NSemPtr;
+
+typedef struct queue
+{
+	void **MsgQ;	//array with pointers in it
+	int length;		//length of the Queue
+	void *TailMsgQ;
+	void *HeadMsgQ;
+} YKQ;
+
 
 //data structure definitions
 typedef struct taskblock *TCBptr;
@@ -43,6 +53,7 @@ void YKTickHandler();
 YKSEM* YKSemCreate(int value);
 void YKSemPend(YKSEM *semaphore);
 void YKSemPost(YKSEM *semaphore);
+YKQ *YKQCreate(void **start, unsigned int size);
 
 
 //#defines

@@ -22,7 +22,7 @@ exit(0);
 }
 
 void InterruptKeyboarder(){
-	int j = 0;
+	/*int j = 0;
 	if(KeyBuffer == 'd' || KeyBuffer == 'D'){
 		printNewLine();
 		printString("DELAY KEY PRESSED");
@@ -43,4 +43,6 @@ void InterruptKeyboarder(){
 		printString(") IGNORED");
 		printNewLine();
 	}
+*/
+GlobalFlag = 1;
 }
