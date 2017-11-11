@@ -12,6 +12,7 @@ void insertReady(TCBptr tmp);	// Insert a TCB to the ready list
 void removeReady(void);			// Remove the current ready TCB
 void removeBlocked(TCBptr tmp);	//this will remove a given blocked task from the block list
 void YKDispatcherASM();			// Dispatch function written in assembly called from here
+TCBptr getSemBlockTask(YKSEM *semaphore); // Get highest priority task waiting on semaphore
 void* ssTemp;					// Temp global to store ss to be able to push and pop it
 void* bxTemp;
 // Needed global variables
@@ -27,7 +28,9 @@ TCBptr YKFreeTCBList;			//a list of available TCBs
 TCB YKTCBArray[MAX_TASKS+1]; 	//array to allocate all needed TCBs including idle task
 int saveContext = 0;			//value used to determine whether or not context needs saving
 TCBptr oldTask;					//pointer used for keeping track of the old task
-
+// Semaphore declarations
+//YKSEM* YKFreeSemList;
+YKSEM YKSemArray[MAX_SEM];
 //initializes the global variables needed to run the RTOS
 //and adds IdleTask to queue
 void YKInitialize(void){
@@ -40,6 +43,14 @@ void YKInitialize(void){
 	for (i = 0; i < MAX_TASKS; i++)		
 		YKTCBArray[i].next = &(YKTCBArray[i+1]);
 	YKTCBArray[MAX_TASKS].next = NULL; 		//last task is idle task
+
+	// initialize YKSemArray[] array with free semaphores
+	for (i = 0; i < MAX_SEM; i++) {
+		YKSEM initSem;
+		initSem.value = 0;
+		initSem.isTaken = 0;
+		YKSemArray[i] = initSem;
+	}
 	
 
 	YKCtxSwCount = 0;		//init switch count to zero
@@ -89,6 +100,7 @@ void YKNewTask(void (*task)(void), void *taskStack, unsigned int priority){
 	YKFreeTCBList->state = NEW;
 	YKFreeTCBList->priority = priority;
 	YKFreeTCBList->delay = 0;
+	YKFreeTCBList->sem = 0;
 
 	//remove this TCB form AvailTCBList
 	newTaskPtr = YKFreeTCBList; // redundant - shawn?
@@ -296,7 +308,7 @@ void removeBlocked(TCBptr tmp){
 	//assign tmp_local to the ready list
 	tmp_local = YKRdyList;
 	//insertReady(tmp);	//will be ahead of idle task
-	//while the ready list has a lower priorit than the tmp passed in move tmp_local up in the list
+	//while the ready list has a lower priority than the tmp passed in move tmp_local up in the list
 	while(tmp_local->priority < tmp->priority){	
 		tmp_local = tmp_local->next;
 	}
@@ -310,5 +322,78 @@ void removeBlocked(TCBptr tmp){
 	tmp->prev = tmp_local->prev;
 	tmp->next = tmp_local;
 	tmp_local->prev = tmp;
+
+}
+
+
+YKSEM* YKSemCreate(int value){
+	int i;
+	YKSEM* YKFreeSem;
+
+	for (i = 0; i < MAX_SEM; i++) {	
+		YKEnterMutex();
+		if (YKSemArray[i].isTaken == 0) { // The semaphore is free to use
+			YKFreeSem = &(YKSemArray[i]);
+			YKFreeSem->isTaken = 1;
+			YKExitMutex();
+			YKFreeSem->value = value;
+			return YKFreeSem;
+		}
+		YKExitMutex();
+	}
+	return YKFreeSem; // should never reach this if there are still free semaphores
+}
+
+void YKSemPend(YKSEM *semaphore) {
+	TCBptr tmpTCB; //set up tmp TCBptrs
+	YKEnterMutex();
+	// check to see if semaphore is free
+	if (semaphore->value-- > 0) { // first check if greater than 0, then dec
+		YKExitMutex();
+		return;
+	}
+
+	tmpTCB = YKRdyList;
+	tmpTCB->sem = semaphore;
+	removeReady();
+	YKScheduler();
+	YKExitMutex();
+}
+
+void YKSemPost(YKSEM *semaphore) {
+	TCBptr tmpTCB; //set up tmp TCBptrs
+	YKEnterMutex();
+	// check to see if a task is waiting on this semaphore
+	if (semaphore->value++ >= 0) { // first check if >= 0, then inc
+		YKExitMutex();
+		return;
+	}
+
+	tmpTCB = getSemBlockTask(semaphore);
+	tmpTCB->sem = 0; // set address of sem to 0 meaning no longer waiting for sem
+	removeBlocked(tmpTCB); // place tcb back into ready list
+
+	if (YKNestingLevel == 0) { // if not inside an ISR
+		YKScheduler();		
+	}
+	YKExitMutex();
+}
+
+// returns the highest priority blocked semaphore that is waiting
+// on the passed in semaphore
+TCBptr getSemBlockTask(YKSEM *semaphore) {
+	int highestPriority = LOWEST_PRIORITY;
+	TCBptr TCBFromList = YKBlockList;
+	TCBptr TCBHighestPriority = YKBlockList;
+
+	while(TCBFromList != NULL) {
+		if (/*(TCBFromList->priority < highestPriority) &&*/ // if better priority
+				TCBFromList->sem == semaphore) {	// and if waiting on sem
+			highestPriority = TCBFromList->priority; // save the highest pri
+			TCBHighestPriority = TCBFromList;	// save that TCB*
+		}
+		TCBFromList = TCBFromList->next;
+	}
+	return TCBHighestPriority;
 
 }

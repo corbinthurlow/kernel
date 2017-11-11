@@ -22,7 +22,7 @@ exit(0);
 }
 
 void InterruptKeyboarder(){
-int j = 0;
+	int j = 0;
 	if(KeyBuffer == 'd' || KeyBuffer == 'D'){
 		printNewLine();
 		printString("DELAY KEY PRESSED");
@@ -31,14 +31,16 @@ int j = 0;
 		for(j = 0; j < 7000; j++){
 		
 		}
-	printNewLine();
-	printString("DELAY COMPLETE");
-	printNewLine();
-}else{
-	printNewLine();
-	printString("KEYPRESS (");
-	printChar(KeyBuffer);
-	printString(") IGNORED");
-	printNewLine();
+		printNewLine();
+		printString("DELAY COMPLETE");
+		printNewLine();
+	} else if(KeyBuffer == 'p' || KeyBuffer == 'P') {
+		YKSemPost(NSemPtr);
+	}else{
+		printNewLine();
+		printString("KEYPRESS (");
+		printChar(KeyBuffer);
+		printString(") IGNORED");
+		printNewLine();
 	}
 }

@@ -2,6 +2,17 @@
 extern unsigned int YKCtxSwCount;
 extern unsigned int YKIdleCount;
 
+
+// struct that holds semaphores
+typedef struct semaphore
+{
+	int value;							//value of the semaphore
+	int isTaken;
+
+} YKSEM;
+
+extern YKSEM *NSemPtr;
+
 //data structure definitions
 typedef struct taskblock *TCBptr;
 typedef struct taskblock
@@ -10,9 +21,11 @@ typedef struct taskblock
     int state;                      	// task state 0: New, 1: Blocked, 2: Ready, 3: Running
     int priority;                       // task priority 
     int delay;                          // delay count
+    YKSEM* sem;							// pointer to a semaphore struct
     TCBptr next;						/* forward ptr for dbl linked list */
     TCBptr prev;						/* backward ptr for dbl linked list */
 } TCB;
+
 
 
 //function prototypes
@@ -27,6 +40,9 @@ void YKEnterISR();
 void YKExitISR();
 void YKDelayTask(unsigned int count);
 void YKTickHandler();
+YKSEM* YKSemCreate(int value);
+void YKSemPend(YKSEM *semaphore);
+void YKSemPost(YKSEM *semaphore);
 
 
 //#defines
