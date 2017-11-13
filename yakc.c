@@ -13,6 +13,7 @@ void removeReady(void);			// Remove the current ready TCB
 void removeBlocked(TCBptr tmp);	//this will remove a given blocked task from the block list
 void YKDispatcherASM();			// Dispatch function written in assembly called from here
 TCBptr getSemBlockTask(YKSEM *semaphore); // Get highest priority task waiting on semaphore
+void **moveQPtr(YKQ *queue, void** QPtr); // moves either head or tail pointer to next index
 void* ssTemp;					// Temp global to store ss to be able to push and pop it
 void* bxTemp;
 // Needed global variables
@@ -110,9 +111,11 @@ void YKNewTask(void (*task)(void), void *taskStack, unsigned int priority){
 	YKFreeTCBList->priority = priority;
 	YKFreeTCBList->delay = 0;
 	YKFreeTCBList->sem = 0;
+	YKFreeTCBList->queue = 0;
+	YKFreeTCBList->occup = 0;
 
 	//remove this TCB form AvailTCBList
-	newTaskPtr = YKFreeTCBList; // redundant - shawn?
+	newTaskPtr = YKFreeTCBList; // redundant? - shawn
    	YKFreeTCBList = newTaskPtr->next;
 
 	//
@@ -411,14 +414,64 @@ TCBptr getSemBlockTask(YKSEM *semaphore) {
 YKQ* YKQCreate(void **start, unsigned int size){
 	YKQ* NewQ;						//the new MsgQ to be created
 	NewQ->length = size;			//the length of the queue
+	NewQ->occup = 0;				//the current occupancy of queue
 	NewQ->MsgQ = start;				//this sets the MsgQ to the address of the starting **
-	NewQ->HeadMsgQ = *(start);		//this sets Head MsgQ to the start of the MsgQArray
-	NewQ->TailMsgQ = *(start+1);	//this sets Tail MsgQ to the start of the MsgQArray plus 1
+	NewQ->HeadMsgQ = start;			//this sets Head MsgQ to the start of the MsgQArray
+	NewQ->TailMsgQ = start;		    //this sets Tail MsgQ to the start of the MsgQArray
 	return NewQ;					//This will return the NewQ					
 }
 
+void *YKQPend(YKQ *queue) {
+	void *message;
+	if (YKNestingLevel > 0) {
+		printString("Should not call from interrupt handler or ISRs\n");
+		return message;
+	}
+	YKEnterMutex();
+	// check if queue is empty
+	if (queue->occup == 0) {
+		// TODO: block task until message becomes available
+		YKScheduler();
+		// I think don't exitMutex yet
+	}
+	
+	// remove the oldest element in the queue
+	message = queue->*HeadMsgQ;
+	queue->occup--; 
+	queue->HeadMsgQ = moveQPtr(queue, queue->HeadMsgQ);
+	YKExitMutex();
+	return message;
+}
 
+int YKQPost(YKQ *queue, void *msg) {
+	// check if queue is full
+	YKEnterMutex();
+	if (queue->occup == queue->size) {
+		YKExitMutex();
+		return 0;
+	}
 
+	//insert message into queue
+	*(queue->TailMsgQ) = msg;
+	queue->occup++; 
+	queue->TailMsgQ = moveQPtr(queue, queue->TailMsgQ);
+
+	//TODO: unblock any waiting tasks for this message
+
+	if (YKNestingLevel == 0) { // if not inside an ISR
+		YKScheduler();		
+	}
+	YKExitMutex();
+}
+
+// moves either tail or head ptr to the next index
+void **moveQPtr(YKQ *queue, void** QPtr) {
+	if (QPtr == queue->msgQ + queue->size - 1) { // check if at end of array
+		QPtr = queue->msgQ;				// circle back to the beginning
+	}
+	else { QPtr++; }
+	return QPtr;
+}
 
 
 
