@@ -18,8 +18,9 @@ typedef struct queue
 {
 	void **MsgQ;	//array with pointers in it
 	int length;		//length of the Queue
-	void *TailMsgQ;
-	void *HeadMsgQ;
+	int occup; 		// current occupancy of the queue
+	void **TailMsgQ; // points to an index to be filled
+	void **HeadMsgQ; // points to an index to remove
 } YKQ;
 
 
@@ -32,6 +33,7 @@ typedef struct taskblock
     int priority;                       // task priority 
     int delay;                          // delay count
     YKSEM* sem;							// pointer to a semaphore struct
+	YKQ* queue							// pointer to a queue struct
     TCBptr next;						/* forward ptr for dbl linked list */
     TCBptr prev;						/* backward ptr for dbl linked list */
 } TCB;
@@ -54,6 +56,8 @@ YKSEM* YKSemCreate(int value);
 void YKSemPend(YKSEM *semaphore);
 void YKSemPost(YKSEM *semaphore);
 YKQ *YKQCreate(void **start, unsigned int size);
+void *YKQPend(YKQ *queue);
+int YKQPost(YKQ *queue, void *msg);
 
 
 //#defines
