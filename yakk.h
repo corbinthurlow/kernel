@@ -1,7 +1,8 @@
-
+#define MAX_MESSAGE_QUEUES          10
 extern unsigned int YKCtxSwCount;
 extern unsigned int YKIdleCount;
 extern int GlobalFlag;
+extern unsigned int YKTickNum;
 
 
 // struct that holds semaphores
@@ -13,19 +14,23 @@ typedef struct semaphore
 } YKSEM;
 
 extern YKSEM *NSemPtr;
+//data structure definitions
+typedef struct taskblock *TCBptr;
 
 typedef struct queue
 {
 	void **MsgQ;	//array with pointers in it
 	int length;		//length of the Queue
-	int occup; 		// current occupancy of the queue
-	void **TailMsgQ; // points to an index to be filled
-	void **HeadMsgQ; // points to an index to remove
+	int full;
+	int empty;
+	int head;
+	int tail;
+	TCBptr waitList;
+	//int occup; 		// current occupancy of the queue
+	//void **TailMsgQ; // points to an index to be filled
+	//void **HeadMsgQ; // points to an index to remove
 } YKQ;
 
-
-//data structure definitions
-typedef struct taskblock *TCBptr;
 typedef struct taskblock
 {
 	unsigned int* stackptr;             // task stack
@@ -33,10 +38,11 @@ typedef struct taskblock
     int priority;                       // task priority 
     int delay;                          // delay count
     YKSEM* sem;							// pointer to a semaphore struct
-	YKQ* queue							// pointer to a queue struct
+	YKQ* queue;							// pointer to a queue struct
     TCBptr next;						/* forward ptr for dbl linked list */
     TCBptr prev;						/* backward ptr for dbl linked list */
 } TCB;
+
 
 
 

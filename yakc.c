@@ -32,8 +32,9 @@ TCBptr oldTask;					//pointer used for keeping track of the old task
 // Semaphore declarations
 //YKSEM* YKFreeSemList;
 YKSEM YKSemArray[MAX_SEM];
-
-
+YKQ YKQArray[MAX_MESSAGE_QUEUES];
+TCBptr queueWaitListInsert(TCBptr front, TCBptr target);
+TCBptr queueWaitListRemove(TCBptr front, TCBptr target); //removes a tcb when no longer waiting for a queue...will at least alwasy return idle task to be run
 
 
 
@@ -112,7 +113,7 @@ void YKNewTask(void (*task)(void), void *taskStack, unsigned int priority){
 	YKFreeTCBList->delay = 0;
 	YKFreeTCBList->sem = 0;
 	YKFreeTCBList->queue = 0;
-	YKFreeTCBList->occup = 0;
+	//YKFreeTCBList->occup = 0;
 
 	//remove this TCB form AvailTCBList
 	newTaskPtr = YKFreeTCBList; // redundant? - shawn
@@ -227,7 +228,7 @@ void YKTickHandler(){
 	YKTickNum++;
 	while(tmp != NULL){ //){
 		//i think we will need to disable interrupts here since this could be called from an tick....
-		YKEnterMutex(); // still disable even if highest priority? -shawn
+		//YKEnterMutex(); // still disable even if highest priority? -shawn
 		//set delay_count to the current task we are looking at delay count
 		delay_count = tmp->delay;
 		//if the delay count is more than zero
@@ -412,75 +413,138 @@ TCBptr getSemBlockTask(YKSEM *semaphore) {
 
 
 YKQ* YKQCreate(void **start, unsigned int size){
-	YKQ* NewQ;						//the new MsgQ to be created
+	YKQ* NewQ = &YKQArray[0];		//the new MsgQ to be created
 	NewQ->length = size;			//the length of the queue
-	NewQ->occup = 0;				//the current occupancy of queue
 	NewQ->MsgQ = start;				//this sets the MsgQ to the address of the starting **
-	NewQ->HeadMsgQ = start;			//this sets Head MsgQ to the start of the MsgQArray
-	NewQ->TailMsgQ = start;		    //this sets Tail MsgQ to the start of the MsgQArray
+	NewQ->full = 0;					//set full to zero to begin with
+	NewQ->empty = 1;				//set empty to 1 to begin with
+	NewQ->head = 0;					//set head to index zero
+	NewQ->tail = 0;					//set tail to index zero 
 	return NewQ;					//This will return the NewQ					
 }
 
 void *YKQPend(YKQ *queue) {
-	void *message;
-	if (YKNestingLevel > 0) {
-		printString("Should not call from interrupt handler or ISRs\n");
-		return message;
-	}
-	YKEnterMutex();
+	void *message;		//message to be pended to
+	YKEnterMutex();		//disable interrupts
 	// check if queue is empty
-	if (queue->occup == 0) {
-		// TODO: block task until message becomes available
-		YKScheduler();
+	if (queue->empty) {
+		YKRdyList = queueWaitListRemove(YKRdyList,YKCurrTask); //rearrange ready list by blocking currTask waiting for queue
+		queue->waitList = queueWaitListInsert(queue->waitList, YKCurrTask);	//set the waitlist for the queue
+		YKScheduler();		//call the scheduler
 		// I think don't exitMutex yet
 	}
 	
 	// remove the oldest element in the queue
-	message = queue->*HeadMsgQ;
-	queue->occup--; 
-	queue->HeadMsgQ = moveQPtr(queue, queue->HeadMsgQ);
-	YKExitMutex();
-	return message;
+	message = queue->MsgQ[queue->head];
+	if(queue->head == (queue->length - 1)){	//if the head is at length minus one we are going to wrap the head around
+		queue->head = 0;					//set head back to zero
+	}else{
+		queue->head++;						//else increment head
+	}
+	
+	queue->full = 0;						//set full to zero meaning not full yet
+	if(queue->tail == queue->head){			//if tail is equal to head
+		queue->empty =1;					//the queue is empty
+	}
+	YKExitMutex();							//re-enable the interrupts
+	return message;							//return the message queue
 }
 
+//posting to a message queue
 int YKQPost(YKQ *queue, void *msg) {
-	// check if queue is full
-	YKEnterMutex();
-	if (queue->occup == queue->size) {
-		YKExitMutex();
-		return 0;
+	TCBptr old;		//tcb ptr used to point to old waitList for queue
+	YKEnterMutex();	//disable interrupts
+	// check if queue is full	
+	if (queue->full) {
+		YKExitMutex();	//re-enable interrupts
+		return 0;		//return 0
 	}
 
-	//insert message into queue
-	*(queue->TailMsgQ) = msg;
-	queue->occup++; 
-	queue->TailMsgQ = moveQPtr(queue, queue->TailMsgQ);
-
-	//TODO: unblock any waiting tasks for this message
-
+	//insert message into queue at tail index
+	(queue->MsgQ[queue->tail]) = msg;
+	if(queue->tail == (queue->length - 1)){		//if the tail is length minus 1
+		queue->tail = 0;						//then wrap tail index back around
+	}else{			
+		queue->tail++;							//else increment tail index
+	}
+	queue->empty = 0;							//set empty to zero
+	if(queue->tail == queue->head){				//if the tail is equal to head
+		queue->full = 1;						//then set full to 1
+	}	
+	if(queue->waitList != NULL){				//if the waitList for the queue is not empty
+		old = queue->waitList;					//set old to the current waitList
+		queue->waitList = queueWaitListRemove(queue->waitList,old);	//rearrange waitList for the queue
+		old->state = READY;		//set the old Tcb state to READY
+		YKRdyList = queueWaitListInsert(YKRdyList,old);		//rearrange the ready list based on the old TCB that just became ready
+		
+	}
 	if (YKNestingLevel == 0) { // if not inside an ISR
-		YKScheduler();		
+		YKScheduler();		//then call scheduler
 	}
-	YKExitMutex();
-}
-
-// moves either tail or head ptr to the next index
-void **moveQPtr(YKQ *queue, void** QPtr) {
-	if (QPtr == queue->msgQ + queue->size - 1) { // check if at end of array
-		QPtr = queue->msgQ;				// circle back to the beginning
-	}
-	else { QPtr++; }
-	return QPtr;
+	YKExitMutex();		//re-enable interrupts
+	return 1;			//return 1
 }
 
 
+//function to insert tcb into queue waitlist when block for waiting on a queue
+TCBptr queueWaitListInsert(TCBptr front, TCBptr target){
+	
+	TCBptr tmp2;		//tmp TCB
+	
+	if(target == NULL){	//if target is null
+		return front;	//return the front TCB
+	}
+
+	// put in list (idle task always at end) 
+	tmp2 = front;	
+
+	if(tmp2==NULL){	//if tmp is null
+		target->next = NULL;	//rearrange needed next and prev pointers
+		target->prev = NULL;
+		front = target;
+		return front;
+	}
+    while (tmp2->priority < target->priority){	//checking priority to rearrange list
+    	if(tmp2->next != NULL)
+			tmp2 = tmp2->next;
+		else{
+			tmp2->next = target;
+			target->prev = tmp2;
+			target->next = NULL;
+			return front;
+		}
+    }
+    if (tmp2->prev == NULL)		// insert before TCB pointed to by tmp2
+		front = target;
+    else
+		tmp2->prev->next = target;
+    
+    target->prev = tmp2->prev;
+    target->next = tmp2;
+    tmp2->prev = target;
+
+	return front;
+}
 
 
+//removes a tcb when no longer waiting for queue...will at least alwasy return idle task to be run
+TCBptr queueWaitListRemove(TCBptr front, TCBptr target){
+	if(target == NULL){
+		return front;
+	}
 
+	if (target->prev == NULL)	// fix up suspended list 
+		front = target->next;
+    else
+		target->prev->next = target->next;
+    if (target->next != NULL)
+		target->next->prev = target->prev;
 
+	target->prev = NULL;
+	target->next = NULL;
 
-
-
+	return front;
+}
 
 
 

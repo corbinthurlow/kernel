@@ -13,6 +13,7 @@ void InterruptKeyboarder();
 extern YKQ *MsgQPtr;
 extern struct msg MsgArray[];
 extern int GlobalFlag;
+extern unsigned int YKTickNum;
 
 void InterruptTicker(){
 	
