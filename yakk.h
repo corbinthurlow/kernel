@@ -1,4 +1,6 @@
 #define MAX_MESSAGE_QUEUES          10
+#define EVENT_WAIT_ANY				0
+#define EVENT_WAIT_ALL				1
 extern unsigned int YKCtxSwCount;
 extern unsigned int YKIdleCount;
 extern int GlobalFlag;
@@ -41,8 +43,14 @@ typedef struct taskblock
 	YKQ* queue;							// pointer to a queue struct
     TCBptr next;						/* forward ptr for dbl linked list */
     TCBptr prev;						/* backward ptr for dbl linked list */
+	YKEVENT *event;
 } TCB;
 
+
+typedef struct event {
+	unsigned int value;
+	TCBptr waitList;
+} YKEVENT;
 
 
 
@@ -64,7 +72,10 @@ void YKSemPost(YKSEM *semaphore);
 YKQ *YKQCreate(void **start, unsigned int size);
 void *YKQPend(YKQ *queue);
 int YKQPost(YKQ *queue, void *msg);
-
+YKEVENT *YKEventCreate(unsigned initVal);
+unsigned YKEventPend(YKEVENT *event,unsigned eventMask, int waitMode);
+void YKEventSet(YKEVENT *event,unsigned eventMask);
+void YKEventReset(YKEVENT *event,unsigned eventMask);
 
 //#defines
 #define NULL 0

@@ -35,8 +35,8 @@ YKSEM YKSemArray[MAX_SEM];
 YKQ YKQArray[MAX_MESSAGE_QUEUES];
 TCBptr queueWaitListInsert(TCBptr front, TCBptr target);
 TCBptr queueWaitListRemove(TCBptr front, TCBptr target); //removes a tcb when no longer waiting for a queue...will at least alwasy return idle task to be run
-
-
+YKEVENT YKEventArray[MAX_EVENTS];
+int idxNextAvailEvent;
 
 
 
@@ -69,7 +69,7 @@ void YKInitialize(void){
 	YKTickNum = 0;			//init tick number to zero
 	YKNestingLevel = 0;		//init nesting level to 0
 	YKKernelStarted = 0;	//variable used to tell of kernel has started
-
+	idxNextAvailEvent = 0;
 	
 	YKRdyList = NULL; //ready list inited to null
 	YKBlockList = NULL;	//block list inited to null
@@ -548,8 +548,50 @@ TCBptr queueWaitListRemove(TCBptr front, TCBptr target){
 
 
 
+YKEVENT *YKEventCreate(unsigned initVal){
+	YKEVENT* event = &YKEventArray[idxNextAvailEvent++];
+	event->waitList = NULL;
+	event->value = initVal;
+	return event;
+}
 
 
+
+
+
+unsigned YKEventPend(YKEVENT *event,unsigned eventMask, int waitMode){
+	//disable interrupts
+	if(waitMode == EVENT_WAIT_ANY){
+		if((event->value)&eventMask){
+			return event->value;		
+		}	
+	}else if (waitMode == EVENT_WAIT_ALL){
+		if(event->value&eventMask == eventMask){
+			return event->value;
+		}
+	}else{
+		YKRdyList = queueWaitListRemove(YKRdyList,YKCurrTask);
+		YKCurrTask->waitMode = waitMode;
+		event->waitList = queueWaitListInsert(event->waitList, YKCurrTask);	//set the waitlist for the queue
+	}
+
+	return event->value;
+
+}
+
+
+
+void YKEventSet(YKEVENT *event,unsigned eventMask){
+	(event->value) |= eventMask;
+
+}
+
+
+
+void YKEventReset(YKEVENT *event,unsigned eventMask){
+	eventMask = ~eventMask;
+	event->value &= eventMask;
+}
 
 
 
